@@ -1,63 +1,92 @@
-import React, { useState } from 'react';
-import { View, Text, Button, StyleSheet, ScrollView } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+import React, { useState } from 'react'
+import { View, Text, Button, Image, ActivityIndicator, StyleSheet } from 'react-native'
+import * as ImagePicker from 'expo-image-picker'
 
-const GroceryScreen = () => {
-  const [receiptText, setReceiptText] = useState('');
+export default function GroceryScreen() {
+  const [image, setImage] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState(null)
 
-  const pickAndSendReceipt = async () => {
+  const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
+      base64: true,
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 1,
-    });
+      quality: 0.8,
+    })
 
-    if (!result.canceled) {
-      const uri = result.assets[0].uri;
-      const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+    if (!result.canceled && result.assets?.length > 0) {
+      const selected = result.assets[0]
+      const base64 = selected.base64
+      setImage({ ...selected, base64 }) // ✅ attach base64 manually
+    }
+  }
 
-      try {
-        const response = await fetch('http://10.32.30.106:5000/ocr', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ base64Image: base64 }),
-        });
+  const uploadImage = async () => {
+    console.log('Uploading image with base64 length:', image.base64?.length)
+    if (!image) return
 
-        const data = await response.json();
-        setReceiptText(data.text);
-      } catch (error) {
-        console.error('OCR error:', error);
-        setReceiptText('Failed to scan receipt.');
+    setLoading(true)
+    setResult(null)
+
+    const response = await fetch('http://172.20.10.3:5000/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        base64Image: image.base64,
+        userId: '00000000-0000-0000-0000-000000000000', // replace with real user ID later
+      }),
+    })
+
+    const data = await response.json()
+    setLoading(false)
+    setResult(data)
+
+    const uploadImage = async () => {
+  if (!image || !image.base64) return
+
+  setLoading(true)
+  setResult(null)
+
+  console.log('Uploading image with base64 length:', image.base64?.length)
+
+  try {
+    const response = await fetch('http://172.20.10.3:3000/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        base64Image: image.base64,
+        userId: '00000000-0000-0000-0000-000000000000',
+      }),
+    })
+
+    const data = await response.json()
+        setResult(data)
+      } catch (err) {
+        console.error('❌ Upload failed:', err)
+        setResult({ error: 'Network or server error' })
+      } finally {
+        setLoading(false)
       }
     }
-  };
+  }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Scan Your Grocery Receipt</Text>
-      <Button title="Upload Receipt" onPress={pickAndSendReceipt} />
-      <Text style={styles.result}>{receiptText}</Text>
-    </ScrollView>
-  );
-};
-
-export default GroceryScreen;
+    <View style={styles.container}>
+      <Text style={styles.title}>📥 Grocery Receipt Upload</Text>
+      <Button title="Pick a Receipt Image" onPress={pickImage} />
+      {image && <Image source={{ uri: image.uri }} style={styles.image} />}
+      {image && <Button title="Upload Image" onPress={uploadImage} />}
+      {loading && <ActivityIndicator size="large" />}
+      {result?.imageUrl && <Text style={styles.success}>✅ Uploaded: {result.imageUrl}</Text>}
+      {result?.error && <Text style={styles.error}>❌ {result.error}</Text>}
+    </View>
+  )
+}
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 20,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginBottom: 20,
-  },
-  result: {
-    marginTop: 20,
-    fontSize: 16,
-    lineHeight: 22,
-  },
-});
+  container: { flex: 1, padding: 20, justifyContent: 'center', alignItems: 'center' },
+  title: { fontSize: 18, fontWeight: '600', marginBottom: 20 },
+  image: { width: 200, height: 200, marginTop: 20, borderRadius: 8 },
+  success: { marginTop: 16, color: 'green' },
+  error: { marginTop: 16, color: 'red' },
+})

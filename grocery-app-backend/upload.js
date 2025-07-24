@@ -1,35 +1,48 @@
-import { supabase } from './supabaseClient'
-import { decode } from 'base64-arraybuffer'
+// upload.js
+const express = require('express')
+const { supabase } = require('./supabaseClient')
+const { Buffer } = require('buffer')
 
-export async function uploadReceipt(base64String, fileName, userId) {
-  const filePath = `${userId}/${fileName}.jpg`
+const router = express.Router()
 
-  const { data: storageData, error: storageError } = await supabase.storage
+router.post('/upload', async (req, res) => {
+  const { base64Image, userId } = req.body
+
+  if (!base64Image || !userId) {
+    return res.status(400).json({ error: 'Missing base64Image or userId' })
+  }
+
+  const buffer = Buffer.from(base64Image, 'base64')
+  const filename = `receipt-${Date.now()}.jpg`
+  const filepath = `${userId}/${filename}`
+
+  const { error: uploadError } = await supabase.storage
     .from('receipts')
-    .upload(filePath, decode(base64String), {
+    .upload(filepath, buffer, {
       contentType: 'image/jpeg',
       upsert: true,
     })
 
-  if (storageError) throw storageError
+  if (uploadError) {
+    return res.status(500).json({ error: uploadError.message })
+  }
 
-  const { data: publicUrlData } = supabase
+  const { data: urlData } = supabase
     .storage
     .from('receipts')
-    .getPublicUrl(filePath)
+    .getPublicUrl(filepath)
 
-  const imageUrl = publicUrlData.publicUrl
+  const imageUrl = urlData.publicUrl
 
   const { error: dbError } = await supabase
     .from('receipts')
-    .insert([
-      {
-        user_id: userId,
-        image_url: imageUrl,
-      },
-    ])
+    .insert([{ user_id: userId, image_url: imageUrl }])
 
-  if (dbError) throw dbError
+  if (dbError) {
+    return res.status(500).json({ error: dbError.message })
+  }
 
-  return imageUrl
-}
+  res.json({ success: true, imageUrl })
+})
+
+module.exports = router

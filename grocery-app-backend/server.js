@@ -1,3 +1,4 @@
+const uploadRoute = require('./upload')
 const dotenv = require('dotenv')
 dotenv.config()
 const express = require('express');
@@ -14,6 +15,7 @@ const client = new vision.ImageAnnotatorClient({
 
 app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
+app.use('/', uploadRoute)
 
 // OCR endpoint
 app.post('/ocr', async (req, res) => {
