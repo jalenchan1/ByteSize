@@ -1,67 +1,45 @@
-// screens/GroceryScreen.js
-console.log('POSTing to', API_URL);
-
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  Button,
-  Image,
-  ActivityIndicator,
-  StyleSheet,
-  Alert,
-  Platform,
-} from 'react-native';
+import { Button, Image, View, StyleSheet, Text, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
-const USER_ID = '00000000-0000-0000-0000-000000000000'; // ← replace later
-
-// --- choose one URL depending on where you run the backend ----------
-const API_URL = 'http://10.32.25.50:4000/upload-receipt-image'
-// --------------------------------------------------------------------
-
 export default function GroceryScreen() {
-  const [image, setImage] = useState(null);
+  const [imageUri, setImageUri] = useState(null);
+  const [base64Image, setBase64Image] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
+  const [uploadResult, setUploadResult] = useState(null);
 
-  /* pick (camera or gallery) */
   const pickImage = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({
+    const result = await ImagePicker.launchImageLibraryAsync({
       base64: true,
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
+      quality: 1,
     });
 
-    if (!res.canceled && res.assets?.length) {
-      setImage(res.assets[0]); // .base64 already included by Expo ≥49
-      setResult(null);
+    if (!result.canceled && result.assets[0].base64) {
+      const selected = result.assets[0];
+      setImageUri(selected.uri);
+      setBase64Image(selected.base64);
     }
   };
 
-  /* upload to backend → OCR → Supabase */
   const uploadImage = async () => {
-    if (!image?.base64) return;
-
+    if (!base64Image) return;
     setLoading(true);
-    setResult(null);
+    setUploadResult(null);
 
     try {
-      const r = await fetch(API_URL, {
+      const response = await fetch('http://10.32.29.90:3001/api/parse-receipt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: USER_ID,
-          base64: image.base64,
+          base64: base64Image,
+          userId: '00000000-0000-0000-0000-000000000000', // hardcoded for now
         }),
       });
 
-      const data = await r.json();
-      setResult(data);
-      Alert.alert('OCR result', JSON.stringify(data.inserted, null, 2));
+      const data = await response.json();
+      setUploadResult(data);
     } catch (err) {
-      console.error('Upload failed:', err);
-      setResult({ error: 'Network or server error' });
+      setUploadResult({ error: 'Upload failed' });
     } finally {
       setLoading(false);
     }
@@ -69,20 +47,30 @@ export default function GroceryScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>📥 Grocery Receipt Upload</Text>
-
+      <Text style={styles.title}>📥 Grocery Receipt Scanner</Text>
       <Button title="Pick a Receipt Image" onPress={pickImage} />
 
-      {image && (
-        <>
-          <Image source={{ uri: image.uri }} style={styles.image} />
-          <Button title="Upload Image" onPress={uploadImage} />
-        </>
+      {imageUri && (
+        <Image source={{ uri: imageUri }} style={styles.image} />
       )}
 
-      {loading && <ActivityIndicator size="large" />}
+      {imageUri && !loading && (
+        <Button title="Upload Image" onPress={uploadImage} />
+      )}
 
-      {result?.error && <Text style={styles.error}>❌ {result.error}</Text>}
+      {loading && <ActivityIndicator size="large" style={{ marginTop: 20 }} />}
+
+      {uploadResult?.success && (
+        <Text style={styles.success}>
+          ✅ Uploaded and Parsed {uploadResult.items.length} item(s)
+        </Text>
+      )}
+
+      {uploadResult?.error && (
+        <Text style={styles.error}>
+          ❌ {uploadResult.error}
+        </Text>
+      )}
     </View>
   );
 }
@@ -93,8 +81,25 @@ const styles = StyleSheet.create({
     padding: 20,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#fff',
   },
-  title: { fontSize: 18, fontWeight: '600', marginBottom: 20 },
-  image: { width: 200, height: 200, marginTop: 20, borderRadius: 8 },
-  error: { marginTop: 16, color: 'red' },
+  title: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 20,
+  },
+  image: {
+    width: 300,
+    height: 400,
+    marginTop: 20,
+    borderRadius: 8,
+  },
+  success: {
+    marginTop: 16,
+    color: 'green',
+  },
+  error: {
+    marginTop: 16,
+    color: 'red',
+  },
 });
